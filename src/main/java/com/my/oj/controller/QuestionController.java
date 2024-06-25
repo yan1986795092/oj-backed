@@ -11,10 +11,15 @@ import com.my.oj.constant.UserConstant;
 import com.my.oj.exception.BusinessException;
 import com.my.oj.exception.ThrowUtils;
 import com.my.oj.model.dto.question.*;
+import com.my.oj.model.dto.questionsubmit.QuestionSubmitAddRequest;
+import com.my.oj.model.dto.questionsubmit.QuestionSubmitQueryRequest;
 import com.my.oj.model.entity.Question;
+import com.my.oj.model.entity.QuestionSubmit;
 import com.my.oj.model.entity.User;
+import com.my.oj.model.vo.QuestionSubmitVO;
 import com.my.oj.model.vo.QuestionVO;
 import com.my.oj.service.QuestionService;
+import com.my.oj.service.QuestionSubmitService;
 import com.my.oj.service.UserService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -42,6 +47,9 @@ public class QuestionController {
     private UserService userService;
 
     // region 增删改查
+    @Resource
+    private QuestionSubmitService questionSubmitService;
+
     /**
      * 创建
      *
@@ -90,7 +98,6 @@ public class QuestionController {
         return ResultUtils.success(newQuestionId);
     }
 
-
     /**
      * 删除
      *
@@ -122,15 +129,15 @@ public class QuestionController {
         return ResultUtils.success(b);
     }
 
-
     /**
      * 更新（仅管理员）
+     *
      * @param questionUpdateRequest
      * @return
      */
     @ApiOperation("更新题目")
     @PostMapping("/update")
-   // @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    // @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Boolean> updateQuestion(@RequestBody QuestionUpdateRequest questionUpdateRequest) {
         log.info("更新题目:{}", questionUpdateRequest);
         //判断是否为空
@@ -171,6 +178,7 @@ public class QuestionController {
 
     /**
      * 根据 id 获取
+     *
      * @param id
      * @return
      */
@@ -193,6 +201,7 @@ public class QuestionController {
 
     /**
      * 分页获取列表（仅管理员）
+     *
      * @param questionQueryRequest
      * @return
      */
@@ -210,6 +219,8 @@ public class QuestionController {
         //返回状态
         return ResultUtils.success(questionPage);
     }
+
+    // endregion
 
     /**
      * 分页获取列表（封装类）
@@ -265,10 +276,9 @@ public class QuestionController {
         return ResultUtils.success(questionService.getQuestionVOPage(questionPage, request));
     }
 
-    // endregion
-
     /**
      * 编辑（用户）
+     *
      * @param questionEditRequest
      * @param request
      * @return
@@ -305,5 +315,49 @@ public class QuestionController {
         boolean result = questionService.updateById(question);
         return ResultUtils.success(result);
     }
+
+    /**
+     * 分页获取题目提交列表（除了管理员外，普通用户只能看到非答案、提交代码等公开信息）
+     *
+     * @param questionSubmitQueryRequest
+     * @param request
+     * @return
+     */
+    @ApiOperation("分页获取题目提交列表")
+    @PostMapping("question_submit/list/page")
+    public BaseResponse<Page<QuestionSubmitVO>> listQuestionSubmitByPage(@RequestBody QuestionSubmitQueryRequest questionSubmitQueryRequest,
+                                                                         HttpServletRequest request) {
+        long current = questionSubmitQueryRequest.getCurrent();
+        long size = questionSubmitQueryRequest.getPageSize();
+
+        // 从数据库中查询原始的题目提交分页信息
+        Page<QuestionSubmit> questionSubmitPage = questionSubmitService.page(new Page<>(current, size),
+                questionSubmitService.getQueryWrapper(questionSubmitQueryRequest));
+        final User loginUser = userService.getLoginUser(request);
+
+        // 返回脱敏信息
+        return ResultUtils.success(questionSubmitService.getQuestionSubmitVOPage(questionSubmitPage, loginUser));
+    }
+
+    /**
+     * 提交题目
+     *
+     * @param questionSubmitAddRequest
+     * @param request
+     * @return 提交记录的 id
+     */
+    @ApiOperation("提交题目")
+    @PostMapping("/question_submit/do")
+    public BaseResponse<Long> doQuestionSubmit(@RequestBody QuestionSubmitAddRequest questionSubmitAddRequest,
+                                               HttpServletRequest request) {
+        if (questionSubmitAddRequest == null || questionSubmitAddRequest.getQuestionId() <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        // 登录才能提交
+        final User loginUser = userService.getLoginUser(request);
+        long questionSubmitId = questionSubmitService.doQuestionSubmit(questionSubmitAddRequest, loginUser);
+        return ResultUtils.success(questionSubmitId);
+    }
+
 
 }
